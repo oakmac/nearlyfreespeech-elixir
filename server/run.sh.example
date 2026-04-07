@@ -1,0 +1,55 @@
+#!/bin/sh
+
+# run.sh — NFS daemon entry point
+#
+# This script is what NearlyFreeSpeech runs as a daemon. It:
+#   1. Exports your app's environment variables
+#   2. Checks whether the build environment has changed (eg realm update)
+#   3. Rebuilds if needed
+#   4. exec's into the Elixir release
+#
+# Copy this file to /home/protected/run.sh on your server and fill in the
+# real values. Do NOT commit this file to version control — it contains secrets.
+
+# ── Application configuration ────────────────────────────────────────────────
+# Edit these for your project.
+
+export APP_NAME="myapp"
+export PORT=9235
+export PHX_HOST="yourdomain.com"
+export SECRET_KEY_BASE="generate_with_mix_phx_gen_secret"
+export DATABASE_URL="ecto://user:password@host/database"
+
+# Add any other env vars your app needs here (API keys, SMTP credentials, etc.)
+
+# Phoenix-specific
+export MIX_ENV=prod
+export PHX_SERVER=true
+
+# ── Environment check ────────────────────────────────────────────────────────
+# Compare the current OS + Elixir + ERTS versions against what the release was
+# built with. If anything has changed (eg NFS realm update), rebuild from source.
+# On normal restarts this check passes instantly and adds no delay.
+
+RELEASE_DIR="/home/protected/releases/current-release"
+RELEASE_BIN="${RELEASE_DIR}/bin/${APP_NAME}"
+
+if [ -x "$RELEASE_BIN" ]; then
+  CURRENT_ENV=$(printf '%s | %s | %s' \
+    "$(uname -sr)" \
+    "$(elixir --version | grep Elixir | head -1)" \
+    "$(erl -noshell -eval 'io:format(erlang:system_info(version))' -s init stop)")
+  BUILT_ENV=$(cat "$RELEASE_DIR/BUILD_ENV" 2>/dev/null || echo "unknown")
+
+  if [ "$CURRENT_ENV" != "$BUILT_ENV" ]; then
+    echo "Environment changed. Rebuilding..."
+    echo "  was: $BUILT_ENV"
+    echo "  now: $CURRENT_ENV"
+    /home/protected/build.sh
+  fi
+else
+  echo "No release found. Building from source..."
+  /home/protected/build.sh
+fi
+
+exec "${RELEASE_DIR}/bin/${APP_NAME}" start
