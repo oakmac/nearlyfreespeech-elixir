@@ -36,10 +36,10 @@ because NFS runs FreeBSD and you likely develop on macOS or Linux — cross-comp
 Erlang releases for FreeBSD is not practical. Building on the server also means that
 realm updates can be fixed with a simple recompile.
 
-Each release records a **build environment fingerprint** — the OS version, Elixir
-version, and ERTS (Erlang Runtime System) version it was compiled against. Before
-starting, the daemon script compares this fingerprint against the current system. If
-anything has changed, it triggers a full rebuild.
+Each release records a **build environment fingerprint** — Elixir version, and
+ERTS (Erlang Runtime System) version it was compiled against. Before
+starting, the daemon script compares this fingerprint against the current
+system. If anything has changed, it triggers a full rebuild.
 
 ```
 NFS daemon management
@@ -118,7 +118,7 @@ reason):
     │   ├── bin/
     │   ├── lib/
     │   ├── releases/
-    │   └── BUILD_ENV     ← eg "FreeBSD 14.2 | Elixir 1.17.3 (...) | 14.2.5.15"
+    │   └── BUILD_ENV     ← eg "Elixir 1.17.3 (...) | 14.2.5.15"
     ├── myapp-20260404-def5678/
     └── current-release -> myapp-20260404-def5678/
 ```
@@ -385,7 +385,7 @@ matches the build environment. There's no downside.
 It's a single line in a file called `BUILD_ENV` inside each release directory:
 
 ```
-FreeBSD 14.2-RELEASE-p1 | Elixir 1.17.3 (compiled with Erlang/OTP 26) | 14.2.5.15
+Elixir 1.17.3 (compiled with Erlang/OTP 26) | 14.2.5.15
 ```
 
 If any part of this string changes between builds, `run.sh` triggers a full rebuild

@@ -71,11 +71,10 @@ ln -sfn "$RELEASE_PATH" "${RELEASES_DIR}/current-release"
 # ── Record the build environment ─────────────────────────────────────────────
 # run.sh compares this file against the current environment to detect changes.
 
-ENV_FINGERPRINT=$(printf '%s | %s | %s' \
-  "$(uname -sr)" \
+ENV_FINGERPRINT=$(printf '%s | %s' \
   "$(elixir --version | grep Elixir | head -1)" \
   "$(erl -noshell -eval 'io:format(erlang:system_info(version))' -s init stop)")
-
+  
 echo "$ENV_FINGERPRINT" > "$RELEASE_PATH/BUILD_ENV"
 echo "Build environment: $ENV_FINGERPRINT"
 

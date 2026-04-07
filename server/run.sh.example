@@ -35,10 +35,10 @@ RELEASE_DIR="/home/protected/releases/current-release"
 RELEASE_BIN="${RELEASE_DIR}/bin/${APP_NAME}"
 
 if [ -x "$RELEASE_BIN" ]; then
-  CURRENT_ENV=$(printf '%s | %s | %s' \
-    "$(uname -sr)" \
+  CURRENT_ENV=$(printf '%s | %s' \
     "$(elixir --version | grep Elixir | head -1)" \
     "$(erl -noshell -eval 'io:format(erlang:system_info(version))' -s init stop)")
+
   BUILT_ENV=$(cat "$RELEASE_DIR/BUILD_ENV" 2>/dev/null || echo "unknown")
 
   if [ "$CURRENT_ENV" != "$BUILT_ENV" ]; then
