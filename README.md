@@ -110,8 +110,8 @@ reason):
 │   ├── priv/
 │   ├── mix.exs
 │   ├── mix.lock
-│   ├── _build/           ← persists between builds for fast incremental compiles
-│   └── deps/             ← persists between builds
+│   ├── _build/           ← persists between builds
+│   └── deps/             ← persists between builds so deps aren't re-fetched
 │
 └── releases/
     ├── myapp-20260403-abc1234/
@@ -123,9 +123,8 @@ reason):
     └── current-release -> myapp-20260404-def5678/
 ```
 
-The `workspace/` directory persists `_build/` and `deps/` between builds, so
-incremental compiles during normal deploys are fast. Only a realm update (which triggers
-`mix compile --force`) requires a full recompile.
+The `workspace/` directory persists `deps/` between builds so dependencies aren't
+re-fetched on every deploy. `build.sh` always compiles with `--force` for simplicity.
 
 ## Quick Start
 
@@ -238,12 +237,21 @@ To deploy a specific release (eg for rollback):
 ### What `push.sh` does
 
 1. SCPs the source tarball to the server's `workspace/`
-2. SSHs in and calls `build.sh` (extract, compile, install, symlink, record fingerprint)
+2. SSHs in and calls `build.sh` (extract, compile, install, symlink, record environment fingerprint)
 3. Creates the shutdown sentinel file
 4. Your app's `ShutdownWatcher` detects the file and calls `System.stop(0)`
 5. NFS restarts the daemon → `run.sh` checks fingerprint → matches → instant start
 
 Downtime during a normal deploy: a few seconds.
+
+## Frontend Assets
+
+If your project has frontend assets, build them locally before running
+`create-release.sh` so that the compiled output is in `priv/static/` when the tarball
+is created. The commented-out lines in `create-release.sh` show one approach; adapt to
+your own build tooling.
+
+If your project has no frontend (eg a pure API), you can ignore this entirely.
 
 ## Graceful Shutdown
 
@@ -340,15 +348,11 @@ macOS is fragile if possible at all. Building on the server guarantees the relea
 and its bundled ERTS — matches the runtime environment. It also means realm updates can
 be fixed automatically with a recompile.
 
-### Why not use Docker?
-
-NFS is shared hosting. There is no Docker.
-
 ### How long does a rebuild take?
 
-A full rebuild (`mix compile --force` after a realm update) takes ~2-3 minutes depending
-on project size. Incremental compiles during normal deploys are much faster because
-`_build/` and `deps/` persist in the workspace.
+Builds take ~2-3 minutes depending on project size. `build.sh` always runs
+`mix compile --force` for simplicity and reliability. `deps/` persists in the workspace
+so dependencies aren't re-fetched each time.
 
 ### Can I get notified before a realm update?
 
