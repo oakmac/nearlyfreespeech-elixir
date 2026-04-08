@@ -6,7 +6,8 @@ set -e
 # This runs on your local machine. It:
 #   1. Builds frontend assets (if applicable)
 #   2. Creates a source tarball with everything needed to compile on the server
-#   3. Writes the release name to _releases/LATEST for use by push.sh
+#   3. Generates a SHA-256 checksum for upload verification
+#   4. Writes the release name to _releases/LATEST for use by push.sh
 #
 # The tarball does NOT include _build/ or deps/ — those persist on the server
 # for faster incremental builds.
@@ -46,11 +47,20 @@ tar -czf "_releases/${RELEASE_NAME}.tar.gz" \
   mix.exs \
   mix.lock
 
+# ── Generate checksum ────────────────────────────────────────────────────────
+
+if command -v sha256sum >/dev/null 2>&1; then
+  sha256sum "_releases/${RELEASE_NAME}.tar.gz" > "_releases/${RELEASE_NAME}.tar.gz.sha256"
+else
+  shasum -a 256 "_releases/${RELEASE_NAME}.tar.gz" > "_releases/${RELEASE_NAME}.tar.gz.sha256"
+fi
+
 echo "$RELEASE_NAME" > _releases/LATEST
 
 # ── Clean up old tarballs (keep 5) ───────────────────────────────────────────
 
 ls -1t _releases/*.tar.gz 2>/dev/null | tail -n +6 | xargs rm -f || true
+ls -1t _releases/*.tar.gz.sha256 2>/dev/null | tail -n +6 | xargs rm -f || true
 
 echo ""
 echo "==> Done: _releases/${RELEASE_NAME}.tar.gz"

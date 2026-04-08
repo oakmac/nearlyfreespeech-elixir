@@ -4,8 +4,8 @@ set -e
 # push.sh — Deploy a release to NearlyFreeSpeech
 #
 # This runs on your local machine. It:
-#   1. Uploads the source tarball to the server
-#   2. SSHs in and calls build.sh (which compiles, installs, and symlinks)
+#   1. Uploads the source tarball and checksum to the server
+#   2. SSHs in and calls build.sh (which verifies, compiles, installs, and symlinks)
 #   3. Signals the running app to shut down (NFS restarts it automatically)
 #
 # Usage:
@@ -42,6 +42,7 @@ else
 fi
 
 TARBALL="_releases/${RELEASE_NAME}.tar.gz"
+CHECKSUM="_releases/${RELEASE_NAME}.tar.gz.sha256"
 
 if [ ! -f "$TARBALL" ]; then
   echo "Error: $TARBALL not found."
@@ -54,6 +55,10 @@ echo "==> Pushing $RELEASE_NAME to $NFS_SSH ..."
 
 echo "==> Uploading source tarball ..."
 scp "$TARBALL" "${NFS_SSH}:${WORKSPACE}/${RELEASE_NAME}.tar.gz"
+
+if [ -f "$CHECKSUM" ]; then
+  scp "$CHECKSUM" "${NFS_SSH}:${WORKSPACE}/${RELEASE_NAME}.tar.gz.sha256"
+fi
 
 # ── Build + deploy on server ──────────────────────────────────────────────────
 

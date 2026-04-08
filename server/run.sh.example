@@ -45,6 +45,7 @@ fi
 
 RELEASE_DIR="/home/protected/releases/current-release"
 RELEASE_BIN="${RELEASE_DIR}/bin/${APP_NAME}"
+NEEDS_BUILD=false
 
 if [ -x "$RELEASE_BIN" ]; then
   CURRENT_ENV=$(printf '%s | %s' \
@@ -58,11 +59,24 @@ if [ -x "$RELEASE_BIN" ]; then
     echo "Environment changed. Rebuilding..."
     echo "  was: $BUILT_ENV"
     echo "  now: $CURRENT_ENV"
-    /home/protected/build.sh
+    NEEDS_BUILD=true
   fi
 else
   echo "No release found. Building from source..."
-  /home/protected/build.sh
+  NEEDS_BUILD=true
 fi
 
-exec "${RELEASE_DIR}/bin/${APP_NAME}" start
+if [ "$NEEDS_BUILD" = true ]; then
+  if ! /home/protected/build.sh; then
+    echo "ERROR: Build failed. Check the logs above. NFS will retry."
+    exit 1
+  fi
+
+  # Re-check that the release binary exists after building
+  if [ ! -x "$RELEASE_BIN" ]; then
+    echo "ERROR: Release binary missing after build. Something went wrong."
+    exit 1
+  fi
+fi
+
+exec "$RELEASE_BIN" start
