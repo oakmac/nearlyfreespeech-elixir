@@ -34,6 +34,7 @@ push.sh ─── scp ──────────────────► 
                                        └─ System.stop(0)
                                      NFS restarts daemon
                                        └─ run.sh → exec release
+push.sh ── polls HEALTH_URL ──────►  app returns 2xx → availability check passed
 ```
 
 ### Resilience: surviving NFS realm updates
@@ -49,9 +50,33 @@ Two mechanisms handle this automatically:
 - **Auto-rebuild on startup.** `run.sh` records a build environment fingerprint
   (Elixir + ERTS versions) and compares it before starting. If anything changed,
   it calls `build.sh` to recompile from source (~2-3 min), then starts the new release.
+  If the incremental build fails (eg stale artifacts or precompiled NIFs broken by
+  the realm update), `build.sh` wipes `deps/` and `_build/` and retries once from a
+  clean slate, allowing common stale-artifact failures to recover unattended.
 
 Your app keeps running through realm updates. If it does need to restart, it rebuilds
 itself. No SSH required.
+
+> **Note on the fingerprint:** the same fingerprint is computed in two places —
+> `build.sh` (writes `BUILD_ENV`) and `run.sh` (compares against it). The two
+> format strings must stay byte-identical, or every daemon start will trigger a
+> spurious rebuild. Both scripts carry a `KEEP IN SYNC` comment pointing at each
+> other. The fingerprint deliberately uses `elixir --short-version` (answered by
+> the shell wrapper, no VM boot) and `erlang:system_info(version)` (pure ERTS
+> version) rather than the `erl` banner line, which embeds machine details like
+> CPU count and would false-positive a rebuild after a server move.
+
+### Crash diagnostics: preserving VM evidence
+
+When the BEAM exits abnormally, useful evidence may be written to stderr or an
+Erlang crash dump. `run.sh` preserves both under `/home/protected/diagnostics/`:
+
+- `beam-stderr.log` captures the release process's stderr.
+- `erl_crash.dump` is written when ERTS can produce a crash dump.
+
+Some forced terminations — especially an external `SIGKILL` — may leave neither.
+The `VmStatsLogger` heartbeat provides a lightweight last-known snapshot of the
+VM even when no crash dump is produced.
 
 ## Repository Structure
 
@@ -63,11 +88,12 @@ server/
 
 scripts/
   create-release.sh     ← build a source tarball (runs locally)
-  push.sh               ← upload + build + deploy (runs locally)
+  push.sh               ← upload + build + deploy + availability check (runs locally)
 
 elixir/
   shutdown_watcher.ex   ← detects shutdown file, stops the app gracefully
-  background_tasks.ex   ← periodic task scheduler (runs the shutdown watcher)
+  vm_stats_logger.ex    ← logs a VM health snapshot every 5 minutes
+  background_tasks.ex   ← periodic task scheduler (runs the two modules above)
 ```
 
 ### Directory layout on the server
@@ -80,9 +106,12 @@ elixir/
 │   ├── config/ lib/ priv/ mix.exs mix.lock
 │   ├── _build/             ← persists between builds
 │   └── deps/               ← persists so deps aren't re-fetched
+├── diagnostics/
+│   ├── beam-stderr.log     ← stderr from the release process
+│   └── erl_crash.dump      ← Erlang crash dump, when one is produced
 └── releases/
     ├── myapp-20260403-abc1234/
-    │   └── BUILD_ENV       ← eg "Elixir 1.17.3 (...) | 14.2.5.15"
+    │   └── BUILD_ENV       ← eg "Elixir 1.17.3 | erts-14.2.5"
     ├── myapp-20260404-def5678/
     └── current-release -> myapp-20260404-def5678/
 ```
@@ -94,6 +123,9 @@ elixir/
 ```sh
 ssh YOUR_NFS_SSH 'sh -s' < server/setup.sh
 ```
+
+When upgrading an existing installation, run `setup.sh` again before replacing
+`run.sh`; it creates the diagnostics directory and files used by the new script.
 
 ### 2. Copy the server scripts
 
@@ -116,12 +148,14 @@ This file contains secrets — do **not** commit it to version control.
 ### 4. Edit the scripts for your project
 
 Set `APP_NAME` in `server/build.sh` and `scripts/push.sh`. Set `NFS_SSH` in
-`scripts/push.sh`.
+`scripts/push.sh`. Optionally set `HEALTH_URL` in `scripts/push.sh` to check
+that the app returns a successful HTTP response after a deploy.
 
 ### 5. Add the Elixir modules to your project
 
-Copy `elixir/shutdown_watcher.ex` and `elixir/background_tasks.ex` into your `lib/`
-directory. Rename the `MyApp` module prefix to match your app.
+Copy `elixir/shutdown_watcher.ex`, `elixir/vm_stats_logger.ex`, and
+`elixir/background_tasks.ex` into your `lib/` directory. Rename the `MyApp`
+module prefix to match your app.
 
 Add to your supervision tree in `application.ex`:
 
@@ -137,13 +171,27 @@ Update `@shutdown_file` in `shutdown_watcher.ex` to match `SHUTDOWN_FILE` in `pu
 
 ### 6. Configure `mix.exs`
 
-Leave `include_erts: true` (the default) so each release bundles its own Erlang runtime:
+Make sure the `project` function in your `mix.exs` defines a release that looks
+like this (with `myapp` renamed to your app):
 
 ```elixir
-releases: [
-  myapp: []
-]
+def project do
+  [
+    app: :myapp,
+    # ... your other project settings ...
+    releases: [
+      myapp: [
+        include_erts: true
+      ]
+    ]
+  ]
+end
 ```
+
+`include_erts: true` is technically the default, but we set it explicitly because
+it is what makes this whole setup survive NFS realm updates: each release bundles
+its own copy of the Erlang runtime, so a realm update can't break a running app.
+If it were `false`, every realm update would take your app down until a rebuild.
 
 ### 7. Register the daemon in the NFS control panel
 
@@ -187,6 +235,10 @@ incompatible releases are automatically removed.
 
 ```sh
 ssh YOUR_NFS_SSH 'tail -f /home/logs/daemon_YOURTAG.log'
+
+# BEAM stderr and Erlang crash dump
+ssh YOUR_NFS_SSH 'tail /home/protected/diagnostics/beam-stderr.log'
+ssh YOUR_NFS_SSH 'head -20 /home/protected/diagnostics/erl_crash.dump'
 ```
 
 ### Frontend assets
@@ -207,17 +259,32 @@ uploads.
 **Release validation.** After compiling, `build.sh` checks that the release binary
 exists and is executable before updating the `current-release` symlink.
 
-**Build failure handling.** If `build.sh` fails during an auto-rebuild, `run.sh` exits
-with a clear error. NFS retries the daemon, which retries the build.
+**Build failure handling.** If the incremental build fails, `build.sh` wipes `deps/`
+and `_build/` and retries once from clean. If that also fails during an auto-rebuild,
+`run.sh` exits with a clear error. NFS retries the daemon, which retries the build.
+
+**Crash diagnostics.** `run.sh` sets `ERL_CRASH_DUMP` and captures BEAM stderr
+under `/home/protected/diagnostics/`. These files preserve useful evidence when
+ERTS has an opportunity to write it; a forced kill may leave no final output.
+
+**VM heartbeat.** `VmStatsLogger` writes a one-line health snapshot (memory
+breakdown, process count, uptime) every 5 minutes, so if the daemon dies you have
+a last-known-state — and `uptime_min` resetting reveals restarts you didn't know
+about.
+
+**Post-deploy availability check.** If `HEALTH_URL` is set, `push.sh` makes up
+to `HEALTH_ATTEMPTS` requests and exits non-zero unless the URL returns a 2xx
+response. This confirms availability, not the identity of the running release.
 
 **Automatic pruning.** Old releases built against a different Erlang environment are
 removed (they can't run). Recent compatible releases are kept for rollback (default: 4).
 
 ## Permissions
 
-NFS runs daemons as `web`. When you SSH in, you're a different user. The scripts use
-`umask 000` so both users can read/write the build and release directories.
-Everything lives inside `/home/protected/` which is not web-accessible, so this is safe.
+NFS runs daemons as `web`. When you SSH in, you're a different user. `setup.sh`
+creates the workspace, release, and diagnostics directories with access for both
+users; `build.sh` uses `umask 000` for shared build artifacts. Everything lives inside
+`/home/protected/`, which is not web-accessible.
 
 If you hit permission errors on existing files, delete and rebuild:
 
@@ -235,6 +302,8 @@ rm -rf /home/protected/releases/*
 | `NFS_SSH` | `push.sh` | Your NFS SSH login |
 | `SHUTDOWN_FILE` | `push.sh`, `shutdown_watcher.ex` | Path to shutdown sentinel file |
 | `SHUTDOWN_WAIT` | `push.sh` | Seconds to wait for graceful shutdown (default: 10) |
+| `HEALTH_URL` | `push.sh` | Post-deploy availability URL (empty = skip) |
+| `HEALTH_ATTEMPTS` | `push.sh` | Maximum availability requests, with a 2s pause between failures (default: 30) |
 | `RELEASES_TO_KEEP` | `build.sh` | Old releases kept for rollback (default: 4) |
 | Env vars | `run.sh` (on server) | `SECRET_KEY_BASE`, `DATABASE_URL`, `PORT`, etc. |
 
@@ -247,15 +316,23 @@ can be fixed with a recompile.
 **How long does a build take?** ~2-3 minutes. `deps/` persists in the workspace so
 dependencies aren't re-fetched each time.
 
-**What if the build fails?** `build.sh` exits on the first error (`set -e`). SSH in and
-run it manually to see full output: `cd /home/protected/workspace && MIX_ENV=prod /home/protected/build.sh`
+**What if the build fails?** `build.sh` retries once from a clean slate (wiping
+`deps/` and `_build/`) automatically. If it still fails, SSH in and run it manually
+to see full output: `cd /home/protected/workspace && MIX_ENV=prod /home/protected/build.sh`
+
+**My daemon keeps dying with nothing in the app log. Now what?** Check
+`/home/protected/diagnostics/beam-stderr.log`,
+`/home/protected/diagnostics/erl_crash.dump`, and the last `[VmStats]` entries in
+the daemon log. These may show the VM's last known state or an ERTS error. Some
+forced terminations can occur without producing a crash dump or final stderr.
 
 **Can I get advance notice of realm updates?** NFS doesn't offer this. You can elect
 "late" realm updates in the control panel to trigger them on your schedule (must update
 at least once a quarter).
 
-**What about NIFs?** `mix compile --force` recompiles everything, including NIFs. If a
-NIF uses precompiled binaries and fails, delete `deps/` and rebuild.
+**What about NIFs?** The clean-slate retry in `build.sh` handles the common case
+(precompiled NIF binaries broken by a realm update) automatically. If a NIF fails
+even from a clean build, investigate via SSH.
 
 **Why the shutdown file instead of the release `stop` command?** The `stop` command
 relies on Erlang's distribution system (epmd, node names, cookies). The sentinel file

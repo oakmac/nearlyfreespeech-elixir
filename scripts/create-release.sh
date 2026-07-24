@@ -16,8 +16,8 @@ set -e
 #   ./scripts/create-release.sh
 
 # ── Configuration ─────────────────────────────────────────────────────────────
-# Change APP_NAME to match your Mix project name.
 
+# Change APP_NAME to match your Mix project name.
 APP_NAME="myapp"
 
 TIMESTAMP=$(date +%Y%m%d%H%M%S)

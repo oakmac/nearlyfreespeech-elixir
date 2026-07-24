@@ -1,38 +1,35 @@
 defmodule MyApp.ShutdownWatcher do
   @moduledoc """
-  Watches for a shutdown sentinel file on disk.
+  Checks for the existence of a shutdown sentinel file.
 
-  When the file is detected, it is deleted and the application is gracefully
-  stopped via `System.stop(0)`. NearlyFreeSpeech's daemon manager will
-  automatically restart the process.
+  If the file exists, it is deleted and the application is gracefully stopped.
+  NearlyFreeSpeech's daemon manager will automatically restart the process,
+  and run.sh will exec into the new release.
 
-  This is used during deploys: the push script creates the sentinel file,
-  this module detects it, and the app shuts down so NFS can restart it with
-  the new release.
+  Runs every 5 seconds (scheduled by `MyApp.BackgroundTasks`). This is the
+  deploy mechanism: push.sh touches the sentinel file after building, this
+  module notices, and the app restarts into the new release.
 
-  ## Usage
-
-  Call `MyApp.ShutdownWatcher.check/0` periodically from a background task
-  (eg every 5-10 seconds). See `MyApp.BackgroundTasks` for an example.
-
-  ## Configuration
-
-  Set the shutdown file path to match what your deploy script creates.
-  The default matches the `SHUTDOWN_FILE` in `push.sh`.
+  Update `@shutdown_file` to match `SHUTDOWN_FILE` in push.sh.
   """
 
   require Logger
 
   @shutdown_file "/tmp/MY_APP_SHUTDOWN"
 
-  @doc """
-  Checks for the shutdown sentinel file. If found, deletes it and stops the app.
-  """
-  def check do
-    if File.exists?(@shutdown_file) do
-      Logger.info("[ShutdownWatcher] Shutdown file detected. Stopping...")
-      File.rm(@shutdown_file)
-      System.stop(0)
+  def run do
+    case File.rm(@shutdown_file) do
+      :ok ->
+        Logger.info("[ShutdownWatcher] Shutdown file removed — stopping gracefully")
+        System.stop(0)
+
+      {:error, :enoent} ->
+        :ok
+
+      {:error, reason} ->
+        Logger.error(
+          "[ShutdownWatcher] Could not remove shutdown file: #{inspect(reason)}"
+        )
     end
   end
 end
