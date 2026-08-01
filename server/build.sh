@@ -49,7 +49,7 @@ cd "$WORKSPACE"
 if [ -n "$TARBALL" ]; then
   # Verify checksum if a .sha256 file exists alongside the tarball
   if [ -f "${TARBALL}.sha256" ]; then
-    echo "Verifying checksum ..."
+    echo "Verifying checksum …"
     EXPECTED=$(awk '{print $1}' "${TARBALL}.sha256")
     ACTUAL=$(sha256sum "$TARBALL" 2>/dev/null || shasum -a 256 "$TARBALL")
     ACTUAL=$(echo "$ACTUAL" | awk '{print $1}')
@@ -66,7 +66,7 @@ if [ -n "$TARBALL" ]; then
     rm -f "${TARBALL}.sha256"
   fi
 
-  echo "Extracting $(basename "$TARBALL") ..."
+  echo "Extracting $(basename "$TARBALL") …"
 
   # Replace the previous source tree so files deleted locally do not remain
   # in the persistent build workspace. Keep deps/ and _build/ for faster builds.
@@ -90,7 +90,7 @@ fi
 # few extra minutes for the auto-rebuild actually succeeding unattended
 # (eg during a realm update at 3am, with no SSH intervention).
 
-echo "Installing Hex and Rebar ..."
+echo "Installing Hex and Rebar …"
 mix local.hex --force --quiet
 mix local.rebar --force --quiet
 
@@ -101,12 +101,12 @@ build_release() {
     mix release --overwrite
 }
 
-echo "Building (incremental) ..."
+echo "Building (incremental) …"
 if ! build_release; then
   echo ""
-  echo "Build failed. Clearing deps/ and _build/ and retrying once from clean ..."
+  echo "Build failed. Clearing deps/ and _build/ and retrying once from clean …"
   rm -rf deps _build
-  echo "Building (clean) ..."
+  echo "Building (clean) …"
   build_release
 fi
 
@@ -151,7 +151,7 @@ ENV_FINGERPRINT=$(printf 'Elixir %s | erts-%s' "$ELIXIR_VSN" "$ERTS_VSN")
 echo "$ENV_FINGERPRINT" > "$RELEASE_PATH/BUILD_ENV"
 echo "Build environment: $ENV_FINGERPRINT"
 
-echo "Updating current-release symlink ..."
+echo "Updating current-release symlink …"
 ln -sfn "$RELEASE_PATH" "${RELEASES_DIR}/current-release"
 
 # ── Prune old releases ───────────────────────────────────────────────────────

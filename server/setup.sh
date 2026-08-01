@@ -8,7 +8,7 @@ set -e
 # Usage:
 #   ssh YOUR_NFS_SSH 'sh -s' < setup.sh
 
-echo "Creating directories ..."
+echo "Creating directories …"
 mkdir -p /home/protected/workspace
 mkdir -p /home/protected/releases
 mkdir -p /home/protected/diagnostics

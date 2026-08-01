@@ -30,14 +30,14 @@ mkdir -p _releases
 # Uncomment and adjust these lines if your project has frontend assets.
 # The goal is to have compiled assets in priv/static/ before creating the tarball.
 
-# echo "==> Installing JS dependencies ..."
+# echo "==> Installing JS dependencies …"
 # npm install --silent
-# echo "==> Building frontend assets ..."
+# echo "==> Building frontend assets …"
 # MIX_ENV=prod mix assets.deploy
 
 # ── Create source tarball ─────────────────────────────────────────────────────
 
-echo "==> Creating source tarball ..."
+echo "==> Creating source tarball …"
 echo "$RELEASE_NAME" > priv/release-id
 
 tar -czf "_releases/${RELEASE_NAME}.tar.gz" \

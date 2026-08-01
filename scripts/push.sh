@@ -56,11 +56,11 @@ if [ ! -f "$TARBALL" ]; then
   exit 1
 fi
 
-echo "==> Pushing $RELEASE_NAME to $NFS_SSH ..."
+echo "==> Pushing $RELEASE_NAME to $NFS_SSH …"
 
 # ── Upload ────────────────────────────────────────────────────────────────────
 
-echo "==> Uploading source tarball ..."
+echo "==> Uploading source tarball …"
 scp "$TARBALL" "${NFS_SSH}:${WORKSPACE}/${RELEASE_NAME}.tar.gz"
 if [ -f "$CHECKSUM" ]; then
   scp "$CHECKSUM" "${NFS_SSH}:${WORKSPACE}/${RELEASE_NAME}.tar.gz.sha256"
@@ -68,14 +68,14 @@ fi
 
 # ── Build + deploy on server ──────────────────────────────────────────────────
 
-echo "==> Building on server ..."
+echo "==> Building on server …"
 ssh "$NFS_SSH" \
   SHUTDOWN_FILE="$SHUTDOWN_FILE" \
   SHUTDOWN_WAIT="$SHUTDOWN_WAIT" \
   sh <<REMOTE
   set -e
   /home/protected/build.sh "${WORKSPACE}/${RELEASE_NAME}.tar.gz"
-  echo "==> Creating shutdown file ..."
+  echo "==> Creating shutdown file …"
   touch "\$SHUTDOWN_FILE"
   sleep "\$SHUTDOWN_WAIT"
   echo "==> Release ${RELEASE_NAME} built; restart requested."
@@ -89,7 +89,7 @@ if [ -n "$HEALTH_URL" ]; then
     exit 1
   fi
 
-  echo "==> Checking app availability at $HEALTH_URL ..."
+  echo "==> Checking app availability at $HEALTH_URL …"
   ATTEMPT=1
   AVAILABLE=false
 
