@@ -50,9 +50,10 @@ if [ -n "$TARBALL" ]; then
   # Verify checksum if a .sha256 file exists alongside the tarball
   if [ -f "${TARBALL}.sha256" ]; then
     echo "Verifying checksum ..."
-    EXPECTED=$(cat "${TARBALL}.sha256" | awk '{print $1}')
+    EXPECTED=$(awk '{print $1}' "${TARBALL}.sha256")
     ACTUAL=$(sha256sum "$TARBALL" 2>/dev/null || shasum -a 256 "$TARBALL")
     ACTUAL=$(echo "$ACTUAL" | awk '{print $1}')
+
     if [ "$EXPECTED" != "$ACTUAL" ]; then
       echo "ERROR: Checksum mismatch for $(basename "$TARBALL")"
       echo "  expected: $EXPECTED"
@@ -60,11 +61,18 @@ if [ -n "$TARBALL" ]; then
       rm -f "$TARBALL" "${TARBALL}.sha256"
       exit 1
     fi
+
     echo "Checksum OK."
     rm -f "${TARBALL}.sha256"
   fi
 
   echo "Extracting $(basename "$TARBALL") ..."
+
+  # Replace the previous source tree so files deleted locally do not remain
+  # in the persistent build workspace. Keep deps/ and _build/ for faster builds.
+  rm -rf config lib priv
+  rm -f mix.exs mix.lock
+
   tar -xzf "$TARBALL"
   rm -f "$TARBALL"
 fi
