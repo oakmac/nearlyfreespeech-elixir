@@ -34,7 +34,6 @@ push.sh ─── scp ──────────────────► 
                                        └─ System.stop(0)
                                      NFS restarts daemon
                                        └─ run.sh → exec release
-push.sh ── polls HEALTH_URL ──────►  app returns 2xx → availability check passed
 ```
 
 ### Resilience: surviving NFS realm updates
@@ -88,7 +87,7 @@ server/
 
 scripts/
   create-release.sh     ← build a source tarball (runs locally)
-  push.sh               ← upload + build + deploy + availability check (runs locally)
+  push.sh               ← upload + build + deploy (runs locally)
 
 elixir/
   shutdown_watcher.ex   ← detects shutdown file, stops the app gracefully
@@ -148,8 +147,7 @@ This file contains secrets — do **not** commit it to version control.
 ### 4. Edit the scripts for your project
 
 Set `APP_NAME` in `server/build.sh` and `scripts/push.sh`. Set `NFS_SSH` in
-`scripts/push.sh`. Optionally set `HEALTH_URL` in `scripts/push.sh` to check
-that the app returns a successful HTTP response after a deploy.
+`scripts/push.sh`.
 
 ### 5. Add the Elixir modules to your project
 
@@ -272,10 +270,6 @@ breakdown, process count, uptime) every 5 minutes, so if the daemon dies you hav
 a last-known-state — and `uptime_min` resetting reveals restarts you didn't know
 about.
 
-**Post-deploy availability check.** If `HEALTH_URL` is set, `push.sh` makes up
-to `HEALTH_ATTEMPTS` requests and exits non-zero unless the URL returns a 2xx
-response. This confirms availability, not the identity of the running release.
-
 **Automatic pruning.** Old releases built against a different Erlang environment are
 removed (they can't run). Recent compatible releases are kept for rollback (default: 4).
 
@@ -302,8 +296,6 @@ rm -rf /home/protected/releases/*
 | `NFS_SSH` | `push.sh` | Your NFS SSH login |
 | `SHUTDOWN_FILE` | `push.sh`, `shutdown_watcher.ex` | Path to shutdown sentinel file |
 | `SHUTDOWN_WAIT` | `push.sh` | Seconds to wait for graceful shutdown (default: 10) |
-| `HEALTH_URL` | `push.sh` | Post-deploy availability URL (empty = skip) |
-| `HEALTH_ATTEMPTS` | `push.sh` | Maximum availability requests, with a 2s pause between failures (default: 30) |
 | `RELEASES_TO_KEEP` | `build.sh` | Old releases kept for rollback (default: 4) |
 | Env vars | `run.sh` (on server) | `SECRET_KEY_BASE`, `DATABASE_URL`, `PORT`, etc. |
 
